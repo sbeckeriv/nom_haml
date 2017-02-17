@@ -1,0 +1,7 @@
+[package]
+name = "haml_parser"
+version = "0.1.0"
+authors = ["Stephen Becker IV <github@deathbyescalator.com>"]
+
+[dependencies]
+nom = "*"
