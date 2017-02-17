@@ -3,15 +3,19 @@ extern crate nom;
 use nom::{IResult,digit, space, alpha, alphanumeric};
 use std::str::{self,FromStr};
 use std::collections::HashMap;
+#[derive(Debug)]
 struct HAMLParser{
     haml: String,
 }
 
 type AttrMap = HashMap<String, String>;
+
+#[derive(Debug, PartialEq)]
 struct Node{
     children: Vec<Node>,
     tag: String,
-    attributes: AttrMap,
+    attributes: Option<AttrMap>,
+    id: Option<String>,
 }
 
 
@@ -22,6 +26,7 @@ named!(single_quote_string<&str>,
     tag!("'")
   )
 );
+
 named!(double_quote_string<&str>,
   delimited!(
     tag!("\""),
@@ -30,7 +35,6 @@ named!(double_quote_string<&str>,
   )
 );
 
-
 named!(tag_id<&str>,
   chain!(
     tag!("#") ~
@@ -38,6 +42,7 @@ named!(tag_id<&str>,
     || id
   )
 );
+
 named!(tag_named<&str>,
   chain!(
     tag!("%") ~
@@ -45,7 +50,6 @@ named!(tag_named<&str>,
     || tag
   )
 );
-
 
 named!(attribute_hash_key_value<(&str, &str)>,
        chain!(
@@ -85,13 +89,12 @@ named!(attributes_list<AttrMap>,
     )
 );
 
-named!(html_tag<(std::option::Option<&str>, std::option::Option<&str>, std::option::Option<AttrMap>)>,
+named!(html_tag<(Node)>,
        do_parse!(
                tag: opt!(complete!(tag_named)) >>
                id: opt!(complete!(tag_id)) >>
-               attributes: opt!(complete!(attributes_list)) >>
-               (tag, id, attributes)
-               )
+               attributes_list: opt!(complete!(attributes_list)) >>
+               (Node{children: vec![], tag: String::from(tag.unwrap_or("div")), id: id.map(|text| String::from(text)), attributes: attributes_list }))
        );
 
 #[cfg(test)]
@@ -118,12 +121,17 @@ mod tests {
         let empty = &b""[..];
         //should not allow this kind of set.
         let mut attrs= AttrMap::new();
-        assert_eq!(html_tag("%p".as_bytes()), IResult::Done(empty, (Some("p"),None,None)));
-        assert_eq!(html_tag("%p#banana".as_bytes()), IResult::Done(empty, (Some("p"),Some("banana"),None)));
+        let node =  Node{children: vec![], tag: "p".to_string(), id: None, attributes: None};
+        assert_eq!(html_tag("%p".as_bytes()), IResult::Done(empty, (node)));
+        let node =  Node{children: vec![], tag: "p".to_string(), id: Some("banana".to_string()), attributes: None};
+        assert_eq!(html_tag("%p#banana".as_bytes()), IResult::Done(empty, (node)));
         attrs.insert("d".to_string(),"3".to_string());
-        assert_eq!(html_tag("%p#banana(:d=>3)".as_bytes()), IResult::Done(empty, (Some("p"),Some("banana"), Some(attrs.clone()))));
-        assert_eq!(html_tag("%p(:d=>3)".as_bytes()), IResult::Done(empty, (Some("p"),None,Some(attrs))));
+        let node =  Node{children: vec![], tag: "p".to_string(), id: Some("banana".to_string()), attributes: Some(attrs.clone())};
+        assert_eq!(html_tag("%p#banana(:d=>3)".as_bytes()), IResult::Done(empty, (node)));
+        let node =  Node{children: vec![], tag: "p".to_string(), id: None, attributes: Some(attrs.clone())};
+        assert_eq!(html_tag("%p(:d=>3)".as_bytes()), IResult::Done(empty, (node)));
     }
+
     #[test]
     fn it_parses_attributes_not_allowed() {
         let empty = &b""[..];
