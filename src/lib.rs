@@ -1,8 +1,17 @@
 #[macro_use]
 extern crate nom;
 use nom::{IResult,digit, space, alpha, alphanumeric};
+use std::str::{self,FromStr};
+use std::collections::HashMap;
 struct HAMLParser{
     haml: String,
+}
+
+type AttrMap = HashMap<String, String>;
+struct Node{
+    children: Vec<Node>,
+    tag: String,
+    attributes: AttrMap,
 }
 
 
@@ -38,7 +47,7 @@ named!(tag_named<&str>,
 );
 
 
-named!(attribute_hash_key_value<(&str, &str)>, 
+named!(attribute_hash_key_value<(&str, &str)>,
        chain!(
            tag!(":") ~
            space? ~
@@ -51,21 +60,32 @@ named!(attribute_hash_key_value<(&str, &str)>,
         )
       );
 
-named!(attributes_list<Vec<(&str, &str)>>, 
-       dbg_dmp!(ws!(
-            delimited!( 
-                alt!(tag!("{") | tag!("(")),
-                separated_list!(
-                    tag!(","),
-                    attribute_hash_key_value
+named!(attributes_list<AttrMap>,
+       dbg_dmp!(
+            map!(
+           ws!(
+                delimited!(
+                    alt!(tag!("{") | tag!("(")),
+                    separated_list!(
+                        tag!(","),
+                        attribute_hash_key_value
+                    ),
+                    alt!(tag!("}") | tag!(")"))
+            )
                 ),
-                alt!(tag!("}") | tag!(")"))
-                )
-            ) 
-    ));
+                |tuple_vec|{
+                    println!("{:?}",tuple_vec);
+                     let mut h= AttrMap::new();
+                        for (k, v) in tuple_vec {
+                          h.insert(String::from(k), String::from(v));
+                        }
+                    h
+                }
+        )
+    )
+);
 
-
-named!(html_tag<(std::option::Option<&str>, std::option::Option<&str>, std::option::Option<std::vec::Vec<(&str, &str)>>)>,
+named!(html_tag<(std::option::Option<&str>, std::option::Option<&str>, std::option::Option<AttrMap>)>,
        do_parse!(
                tag: opt!(complete!(tag_named)) >>
                id: opt!(complete!(tag_id)) >>
@@ -97,25 +117,32 @@ mod tests {
     fn it_parses_html_tag() {
         let empty = &b""[..];
         //should not allow this kind of set.
+        let mut attrs= AttrMap::new();
         assert_eq!(html_tag("%p".as_bytes()), IResult::Done(empty, (Some("p"),None,None)));
         assert_eq!(html_tag("%p#banana".as_bytes()), IResult::Done(empty, (Some("p"),Some("banana"),None)));
-        assert_eq!(html_tag("%p#banana(:d=>3)".as_bytes()), IResult::Done(empty, (Some("p"),Some("banana"), Some(vec![("d","3")]))));
-        assert_eq!(html_tag("%p(:d=>3)".as_bytes()), IResult::Done(empty, (Some("p"),None,Some(vec![("d","3")]))));
+        attrs.insert("d".to_string(),"3".to_string());
+        assert_eq!(html_tag("%p#banana(:d=>3)".as_bytes()), IResult::Done(empty, (Some("p"),Some("banana"), Some(attrs.clone()))));
+        assert_eq!(html_tag("%p(:d=>3)".as_bytes()), IResult::Done(empty, (Some("p"),None,Some(attrs))));
     }
     #[test]
     fn it_parses_attributes_not_allowed() {
         let empty = &b""[..];
+        let mut attrs= AttrMap::new();
+        attrs.insert("a".to_string(),"3".to_string());
         //should not allow this kind of set.
-        assert_eq!(attributes_list("(:a => 3}".as_bytes()), IResult::Done(empty, vec![("a","3")]));
+        assert_eq!(attributes_list("(:a => 3}".as_bytes()), IResult::Done(empty, attrs));
     }
 
     #[test]
     fn it_parses_attributes() {
         let empty = &b""[..];
-        assert_eq!(attributes_list("{}".as_bytes()), IResult::Done(empty, vec![]));
-        assert_eq!(attributes_list("(:a=>3)".as_bytes()), IResult::Done(empty, vec![("a","3")]));
-        assert_eq!(attributes_list("{:a=>\"3\"}".as_bytes()), IResult::Done(empty, vec![("a","3")]));
-        assert_eq!(attributes_list("{:a=> '3'}".as_bytes()), IResult::Done(empty, vec![("a","3")]));
-        assert_eq!(attributes_list("{:a=>3, :b=>'4'}".as_bytes()), IResult::Done(empty, vec![("a","3"),("b","4")]));
+        let mut attrs=AttrMap::new();
+        assert_eq!(attributes_list("{}".as_bytes()), IResult::Done(empty,attrs.clone()));
+        attrs.insert("a".to_string(),"3".to_string());
+        assert_eq!(attributes_list("(:a=>3)".as_bytes()), IResult::Done(empty, attrs.clone()));
+        assert_eq!(attributes_list("{:a=>\"3\"}".as_bytes()), IResult::Done(empty, attrs.clone()));
+        assert_eq!(attributes_list("{:a=> '3'}".as_bytes()), IResult::Done(empty, attrs.clone()));
+        attrs.insert("b".to_string(),"4".to_string());
+        assert_eq!(attributes_list("{:a=>3, :b=>'4'}".as_bytes()), IResult::Done(empty, attrs));
     }
 }
