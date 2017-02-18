@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate nom;
-use nom::{IResult, digit, space, alpha, alphanumeric};
+use nom::{IResult,anychar, digit, space, alpha, alphanumeric, line_ending};
 use std::str::{self, FromStr};
 use std::collections::HashMap;
 #[derive(Debug)]
@@ -16,6 +16,7 @@ struct Node {
     tag: String,
     attributes: Option<AttrMap>,
     id: Option<String>,
+    contents: String,
     class: Vec<String>,
 }
 
@@ -112,8 +113,10 @@ named!(html_tag<(Node)>,
                id: opt!(complete!(tag_id)) >>
                class: many0!(tag_class) >>
                attributes_list: opt!(complete!(attributes_list)) >>
+               contents: many0!(anychar) >>
                (Node{children: vec![], tag: String::from(tag.unwrap_or("div")),
                    id: id.map(|text| String::from(text)),
+                   contents: contents.into_iter().collect::<String>(),
                    attributes: attributes_list,
                    class: class.into_iter().map(|text| String::from(text)).collect(),
                })
@@ -150,6 +153,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             id: None,
+            contents: "".to_string(),
             attributes: None,
         };
         assert_eq!(html_line("%p".as_bytes()), IResult::Done(empty, (vec![], node.clone())));
@@ -168,6 +172,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             id: None,
+            contents: "".to_string(),
             attributes: None,
         };
         assert_eq!(html_tag("%p".as_bytes()), IResult::Done(empty, (node)));
@@ -176,6 +181,17 @@ mod tests {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
+            id: None,
+            contents: " Yes sir".to_string(),
+            attributes: None,
+        };
+        assert_eq!(html_tag("%p Yes sir".as_bytes()), IResult::Done(empty, (node)));
+
+        let node = Node {
+            class: vec![],
+            children: vec![],
+            tag: "p".to_string(),
+            contents: "".to_string(),
             id: Some("banana".to_string()),
             attributes: None,
         };
@@ -185,6 +201,7 @@ mod tests {
             class: vec!["pan".to_string(),"cakes".to_string()],
             children: vec![],
             tag: "p".to_string(),
+            contents: "".to_string(),
             id: Some("banana".to_string()),
             attributes: None,
         };
@@ -195,6 +212,7 @@ mod tests {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
+            contents: "".to_string(),
             id: Some("banana".to_string()),
             attributes: Some(attrs.clone()),
         };
@@ -204,6 +222,7 @@ mod tests {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
+            contents: "".to_string(),
             id: None,
             attributes: Some(attrs.clone()),
         };
