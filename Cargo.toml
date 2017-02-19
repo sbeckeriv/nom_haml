@@ -5,3 +5,5 @@ authors = ["Stephen Becker IV <github@deathbyescalator.com>"]
 
 [dependencies]
 nom = "*"
+pest = "0.4"
+error-chain = "0.8"

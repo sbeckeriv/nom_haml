@@ -1,5 +1,7 @@
-#[macro_use]
-extern crate nom;
+#![recursion_limit = "300"]
+#[macro_use] extern crate pest;
+#[macro_use] extern crate error_chain;
+#[macro_use] extern crate nom;
 use nom::{IResult,anychar, digit, space, alpha, alphanumeric, line_ending};
 use std::str::{self, FromStr};
 use std::collections::HashMap;
@@ -7,12 +9,16 @@ use std::collections::HashMap;
 struct HAMLParser {
     haml: String,
 }
+mod parser;
+mod errors;
+use parser::{Node, Operator};
+use parser::Node::*;
 
 type AttrMap = HashMap<String, String>;
 
 #[derive(Debug, Clone, PartialEq)]
-struct Node {
-    children: Vec<Node>,
+struct HamlNode {
+    children: Vec<HamlNode>,
     tag: String,
     attributes: Option<AttrMap>,
     id: Option<String>,
@@ -34,6 +40,14 @@ named!(double_quote_string<&str>,
     tag!("\""),
     map_res!(escaped!(call!(alphanumeric), '\\', is_a!("\"n\\")), std::str::from_utf8),
     tag!("\"")
+  )
+);
+
+named!(doctype<&str>,
+  chain!(
+    tag!("!!!") ~
+    data: map_res!( alphanumeric, std::str::from_utf8),
+    || data
   )
 );
 
@@ -99,7 +113,7 @@ named!(attributes_list<AttrMap>,
     )
 );
 
-named!(html_line<(Vec<&str>, Node)>,
+named!(html_line<(Vec<&str>, HamlNode)>,
        do_parse!(
                whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
                node: html_tag >>
@@ -107,14 +121,14 @@ named!(html_line<(Vec<&str>, Node)>,
                )
        );
 
-named!(html_tag<(Node)>,
+named!(html_tag<(HamlNode)>,
        do_parse!(
                tag: opt!(complete!(tag_named)) >>
                id: opt!(complete!(tag_id)) >>
                class: many0!(tag_class) >>
                attributes_list: opt!(complete!(attributes_list)) >>
                contents: many0!(anychar) >>
-               (Node{children: vec![], tag: String::from(tag.unwrap_or("div")),
+               (HamlNode{children: vec![], tag: String::from(tag.unwrap_or("div")),
                    id: id.map(|text| String::from(text)),
                    contents: contents.into_iter().collect::<String>(),
                    attributes: attributes_list,
@@ -148,7 +162,7 @@ mod tests {
         // should not allow this kind of set.
         let mut attrs = AttrMap::new();
 
-        let node = Node {
+        let node = HamlNode {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
@@ -167,7 +181,7 @@ mod tests {
         // should not allow this kind of set.
         let mut attrs = AttrMap::new();
 
-        let node = Node {
+        let node = HamlNode {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
@@ -177,7 +191,7 @@ mod tests {
         };
         assert_eq!(html_tag("%p".as_bytes()), IResult::Done(empty, (node)));
 
-        let node = Node {
+        let node = HamlNode {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
@@ -187,7 +201,7 @@ mod tests {
         };
         assert_eq!(html_tag("%p Yes sir".as_bytes()), IResult::Done(empty, (node)));
 
-        let node = Node {
+        let node = HamlNode {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
@@ -197,7 +211,7 @@ mod tests {
         };
         assert_eq!(html_tag("%p#banana".as_bytes()), IResult::Done(empty, (node)));
 
-        let node = Node {
+        let node = HamlNode {
             class: vec!["pan".to_string(),"cakes".to_string()],
             children: vec![],
             tag: "p".to_string(),
@@ -208,7 +222,7 @@ mod tests {
         assert_eq!(html_tag("%p#banana.pan.cakes".as_bytes()), IResult::Done(empty, (node)));
 
         attrs.insert("d".to_string(), "3".to_string());
-        let node = Node {
+        let node = HamlNode {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
@@ -218,7 +232,7 @@ mod tests {
         };
         assert_eq!(html_tag("%p#banana(:d=>3)".as_bytes()), IResult::Done(empty, (node)));
 
-        let node = Node {
+        let node = HamlNode {
             class: vec![],
             children: vec![],
             tag: "p".to_string(),
