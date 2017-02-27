@@ -5,16 +5,17 @@
 use nom::{IResult,anychar, digit, space, alpha, alphanumeric, line_ending};
 use std::str::{self, FromStr};
 use std::collections::HashMap;
-#[derive(Debug)]
+use std::fmt;
+use std::sync::Arc;
+
 struct HAMLParser {
     haml: String,
+    context: HashMap<String,Arc<fmt::Display>>,
 }
-mod parser;
-mod errors;
-use parser::{Node, Operator};
-use parser::Node::*;
 
 type AttrMap = HashMap<String, String>;
+type ContextCode = String;
+type Text = String;
 
 #[derive(Debug, Clone, PartialEq)]
 struct HamlNode {
@@ -22,10 +23,18 @@ struct HamlNode {
     tag: String,
     attributes: Option<AttrMap>,
     id: Option<String>,
+    context_lookup: Option<ContextCode>,
     contents: String,
     class: Vec<String>,
 }
 
+named!(context_lookup<ContextCode>,
+  chain!(
+    tag!("= ") ~
+    data: map_res!( alphanumeric, std::str::from_utf8),
+    || ContextCode::from(data)
+  )
+);
 
 named!(single_quote_string<&str>,
   delimited!(
@@ -102,7 +111,6 @@ named!(attributes_list<AttrMap>,
             )
                 ),
                 |tuple_vec|{
-                    println!("{:?}",tuple_vec);
                      let mut h= AttrMap::new();
                         for (k, v) in tuple_vec {
                           h.insert(String::from(k), String::from(v));
@@ -113,6 +121,24 @@ named!(attributes_list<AttrMap>,
     )
 );
 
+named!(html_tag<(HamlNode)>,
+       do_parse!(
+               tag: opt!(complete!(tag_named)) >>
+               id: opt!(complete!(tag_id)) >>
+               class: many0!(tag_class) >>
+               attributes_list: opt!(complete!(attributes_list)) >>
+               context_lookup: opt!(complete!(context_lookup)) >>
+               contents: many0!(anychar) >>
+               (HamlNode{children: vec![], tag: String::from(tag.unwrap_or("div")),
+                   id: id.map(|text| String::from(text)),
+                   contents: contents.into_iter().collect::<String>(),
+                   attributes: attributes_list,
+                   context_lookup: context_lookup,
+                   class: class.into_iter().map(|text| String::from(text)).collect(),
+               })
+               )
+       );
+
 named!(html_line<(Vec<&str>, HamlNode)>,
        do_parse!(
                whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
@@ -121,22 +147,30 @@ named!(html_line<(Vec<&str>, HamlNode)>,
                )
        );
 
-named!(html_tag<(HamlNode)>,
+named!(the_rest<(String)>,
        do_parse!(
-               tag: opt!(complete!(tag_named)) >>
-               id: opt!(complete!(tag_id)) >>
-               class: many0!(tag_class) >>
-               attributes_list: opt!(complete!(attributes_list)) >>
-               contents: many0!(anychar) >>
-               (HamlNode{children: vec![], tag: String::from(tag.unwrap_or("div")),
-                   id: id.map(|text| String::from(text)),
-                   contents: contents.into_iter().collect::<String>(),
-                   attributes: attributes_list,
-                   class: class.into_iter().map(|text| String::from(text)).collect(),
-               })
-               )
+               contents: many0!(anychar)>>
+               (contents.into_iter().collect::<String>())
+                )
        );
 
+enum HamlCode{
+    HamlNodeBlock(HamlNode),
+    CodeBlock(ContextCode),
+    TextBlock(Text),
+}
+
+named!(haml_line<(Vec<&str>, HamlCode)>,
+       do_parse!(
+               whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
+               line: alt!(
+                    html_tag => { |h|       HamlCode::HamlNodeBlock(h)  }   |
+                    context_lookup => { |h| HamlCode::CodeBlock(h)      }   |
+                    the_rest => { |h|       HamlCode::TextBlock(h)      }
+                )>> 
+               (whitespace, line)
+               )
+       );
 #[cfg(test)]
 mod tests {
     use nom::IResult;
@@ -145,21 +179,18 @@ mod tests {
     #[test]
     fn it_parses_tag_id() {
         let empty = &b""[..];
-        // should not allow this kind of set.
         assert_eq!(tag_id("#id".as_bytes()), IResult::Done(empty, ("id")));
     }
 
     #[test]
     fn it_parses_tag_nammed() {
         let empty = &b""[..];
-        // should not allow this kind of set.
         assert_eq!(tag_named("%p".as_bytes()), IResult::Done(empty, ("p")));
     }
 
     #[test]
     fn it_parses_html_line() {
         let empty = &b""[..];
-        // should not allow this kind of set.
         let mut attrs = AttrMap::new();
 
         let node = HamlNode {
@@ -167,6 +198,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             id: None,
+            context_lookup: None,
             contents: "".to_string(),
             attributes: None,
         };
@@ -178,7 +210,6 @@ mod tests {
     #[test]
     fn it_parses_html_tag() {
         let empty = &b""[..];
-        // should not allow this kind of set.
         let mut attrs = AttrMap::new();
 
         let node = HamlNode {
@@ -186,6 +217,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             id: None,
+            context_lookup: None,
             contents: "".to_string(),
             attributes: None,
         };
@@ -196,6 +228,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             id: None,
+            context_lookup: None,
             contents: " Yes sir".to_string(),
             attributes: None,
         };
@@ -206,6 +239,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
+            context_lookup: None,
             id: Some("banana".to_string()),
             attributes: None,
         };
@@ -216,6 +250,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
+            context_lookup: None,
             id: Some("banana".to_string()),
             attributes: None,
         };
@@ -227,6 +262,7 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
+            context_lookup: None,
             id: Some("banana".to_string()),
             attributes: Some(attrs.clone()),
         };
@@ -237,10 +273,22 @@ mod tests {
             children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
+            context_lookup: None,
             id: None,
             attributes: Some(attrs.clone()),
         };
         assert_eq!(html_tag("%p(:d=>3)".as_bytes()), IResult::Done(empty, (node)));
+
+        let node = HamlNode {
+            class: vec![],
+            children: vec![],
+            tag: "p".to_string(),
+            contents: "".to_string(),
+            context_lookup: Some("banana".to_string()),
+            id: None,
+            attributes: Some(attrs.clone()),
+        };
+        assert_eq!(html_tag("%p(:d=>3)= banana".as_bytes()), IResult::Done(empty, (node)));
     }
 
     #[test]
