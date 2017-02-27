@@ -1,9 +1,12 @@
 #![recursion_limit = "300"]
-#[macro_use] extern crate pest;
-#[macro_use] extern crate error_chain;
-#[macro_use] extern crate nom;
-use nom::{anychar,  space, alphanumeric, };
-use std::str::{self};
+#[macro_use]
+extern crate pest;
+#[macro_use]
+extern crate error_chain;
+#[macro_use]
+extern crate nom;
+use nom::{anychar, space, alphanumeric};
+use std::str;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
@@ -11,7 +14,7 @@ use std::sync::Arc;
 
 struct HAMLParser {
     haml: String,
-    context: HashMap<String,Arc<fmt::Display>>,
+    context: HashMap<String, Arc<fmt::Display>>,
 }
 
 type AttrMap = HashMap<String, String>;
@@ -31,148 +34,148 @@ struct HamlNode {
 }
 
 named!(context_lookup<ContextCode>,
-  chain!(
-    tag!("= ") ~
-    data: map_res!( alphanumeric, std::str::from_utf8),
-    || ContextCode::from(data)
-  )
-);
-
-named!(single_quote_string<&str>,
-  delimited!(
-    tag!("'"),
-    map_res!(escaped!(call!(alphanumeric), '\\', is_a!("\'n\\")), std::str::from_utf8),
-    tag!("'")
-  )
-);
-
-named!(double_quote_string<&str>,
-  delimited!(
-    tag!("\""),
-    map_res!(escaped!(call!(alphanumeric), '\\', is_a!("\"n\\")), std::str::from_utf8),
-    tag!("\"")
-  )
-);
-
-named!(doctype<&str>,
-  chain!(
-    tag!("!!!") ~
-    data: map_res!( alphanumeric, std::str::from_utf8),
-    || data
-  )
-);
-
-named!(tag_class<&str>,
-  chain!(
-    tag!(".") ~
-    class: map_res!( alphanumeric, std::str::from_utf8),
-    || class
-  )
-);
-
-named!(tag_id<&str>,
-  chain!(
-    tag!("#") ~
-    id: map_res!( alphanumeric, std::str::from_utf8),
-    || id
-  )
-);
-
-named!(tag_named<&str>,
-  chain!(
-    tag!("%") ~
-    tag: map_res!( alphanumeric, std::str::from_utf8),
-    || tag
-  )
-);
-
-named!(attribute_hash_key_value<(&str, &str)>,
        chain!(
-           tag!(":") ~
-           space? ~
-           key: map_res!( alphanumeric, std::str::from_utf8) ~
-           space? ~
-           tag!("=>") ~
-           space? ~
-           value: alt!(single_quote_string | double_quote_string | map_res!( alphanumeric, std::str::from_utf8)) ,
-           || (key,value)
-        )
+           tag!("= ") ~
+           data: map_res!( alphanumeric, std::str::from_utf8),
+           || ContextCode::from(data)
+           )
       );
 
-named!(attributes_list<AttrMap>,
-            map!(
-           ws!(
-                delimited!(
-                    alt!(tag!("{") | tag!("(")),
-                    separated_list!(
-                        tag!(","),
-                        attribute_hash_key_value
-                    ),
-                    alt!(tag!("}") | tag!(")"))
-            )
-                ),
-                |tuple_vec|{
-                     let mut h= AttrMap::new();
-                        for (k, v) in tuple_vec {
-                          h.insert(String::from(k), String::from(v));
-                        }
-                    h
-                }
-        )
+named!(single_quote_string<&str>,
+       delimited!(
+           tag!("'"),
+           map_res!(escaped!(call!(alphanumeric), '\\', is_a!("\'n\\")), std::str::from_utf8),
+           tag!("'")
+           )
+      );
+
+named!(double_quote_string<&str>,
+       delimited!(
+           tag!("\""),
+           map_res!(escaped!(call!(alphanumeric), '\\', is_a!("\"n\\")), std::str::from_utf8),
+           tag!("\"")
+           )
+      );
+
+named!(doctype<&str>,
+       chain!(
+           tag!("!!!") ~
+           data: map_res!( alphanumeric, std::str::from_utf8),
+           || data
+           )
+      );
+
+named!(tag_class<&str>,
+       chain!(
+           tag!(".") ~
+           class: map_res!( alphanumeric, std::str::from_utf8),
+           || class
+           )
+      );
+
+named!(tag_id<&str>,
+       chain!(
+           tag!("#") ~
+           id: map_res!( alphanumeric, std::str::from_utf8),
+           || id
+           )
+      );
+
+named!(tag_named<&str>,
+       chain!(
+           tag!("%") ~
+           tag: map_res!( alphanumeric, std::str::from_utf8),
+           || tag
+           )
+      );
+
+named!(attribute_hash_key_value<(&str, &str)>,
+chain!(
+    tag!(":") ~
+    space? ~
+    key: map_res!( alphanumeric, std::str::from_utf8) ~
+    space? ~
+    tag!("=>") ~
+    space? ~
+    value: alt!(single_quote_string | double_quote_string | map_res!( alphanumeric, std::str::from_utf8)) ,
+    || (key,value)
+    )
 );
 
+named!(attributes_list<AttrMap>,
+       map!(
+           ws!(
+               delimited!(
+                   alt!(tag!("{") | tag!("(")),
+                   separated_list!(
+                       tag!(","),
+                       attribute_hash_key_value
+                       ),
+                       alt!(tag!("}") | tag!(")"))
+                       )
+              ),
+              |tuple_vec|{
+                  let mut h= AttrMap::new();
+                  for (k, v) in tuple_vec {
+                      h.insert(String::from(k), String::from(v));
+                  }
+                  h
+              }
+           )
+      );
+
 named!(html_tag<(HamlNode)>,
-       do_parse!(
-               tag: opt!(complete!(tag_named)) >>
-               id: opt!(complete!(tag_id)) >>
-               class: many0!(tag_class) >>
-               attributes_list: opt!(complete!(attributes_list)) >>
-               context_lookup: opt!(complete!(context_lookup)) >>
-               contents: many0!(anychar) >>
-               (HamlNode{children: vec![], tag: String::from(tag.unwrap_or("div")),
-                   id: id.map(|text| String::from(text)),
-                   contents: contents.into_iter().collect::<String>(),
-                   attributes: attributes_list,
-                   context_lookup: context_lookup,
-                   class: class.into_iter().map(|text| String::from(text)).collect(),
-               })
-               )
-       );
+do_parse!(
+    tag: opt!(complete!(tag_named)) >>
+    id: opt!(complete!(tag_id)) >>
+    class: many0!(tag_class) >>
+    attributes_list: opt!(complete!(attributes_list)) >>
+    context_lookup: opt!(complete!(context_lookup)) >>
+    contents: many0!(anychar) >>
+    (HamlNode{children: vec![], tag: String::from(tag.unwrap_or("div")),
+    id: id.map(|text| String::from(text)),
+    contents: contents.into_iter().collect::<String>(),
+    attributes: attributes_list,
+    context_lookup: context_lookup,
+    class: class.into_iter().map(|text| String::from(text)).collect(),
+    })
+    )
+);
 
 named!(html_line<(Vec<&str>, HamlNode)>,
-       do_parse!(
-               whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
-               node: html_tag >>
-               (whitespace, node)
-               )
-       );
+do_parse!(
+    whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
+    node: html_tag >>
+    (whitespace, node)
+    )
+);
 
 named!(the_rest<(Text)>,
-       do_parse!(
-               contents: many0!(anychar)>>
-               (contents.into_iter().collect::<Text>())
-                )
-       );
+do_parse!(
+    contents: many0!(anychar)>>
+    (contents.into_iter().collect::<Text>())
+    )
+);
 
 #[derive(Debug, Clone, PartialEq)]
-enum HamlCode{
+enum HamlCode {
     HamlNodeBlock(HamlNode),
     CodeBlock(ContextCode),
     TextBlock(Text),
 }
 
 named!(haml_line<(Vec<&str>, HamlCode)>,
-       do_parse!(
-               whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
-               line: alt!(
-                    // context before tag. tag can include context
-                    context_lookup => { |h| HamlCode::CodeBlock(h)      }   |
-                    html_tag => { |h|       HamlCode::HamlNodeBlock(h)  }   |
-                    the_rest => { |h|       HamlCode::TextBlock(h)      }
-                )>> 
-               (whitespace, line)
-               )
-       );
+do_parse!(
+    whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
+    line: alt!(
+        // context before tag. tag can include context
+        context_lookup => { |h| HamlCode::CodeBlock(h)      }   |
+        html_tag => { |h|       HamlCode::HamlNodeBlock(h)  }   |
+        the_rest => { |h|       HamlCode::TextBlock(h)      }
+        )>> 
+    (whitespace, line)
+    )
+);
 
 #[cfg(test)]
 mod tests {
@@ -185,10 +188,12 @@ mod tests {
         let empty = &b""[..];
         let parsed_node = haml_line("prints".as_bytes());
         match parsed_node {
-            IResult::Done(x, tup)=>{
+            IResult::Done(x, tup) => {
                 assert_eq!(tup.1,  HamlCode::TextBlock("prints".to_string()));
             }
-            _ => { assert_eq!(false, true); }
+            _ => {
+                assert_eq!(false, true);
+            }
         }
     }
 
@@ -198,10 +203,12 @@ mod tests {
         let empty = &b""[..];
         let parsed_node = haml_line("= prints".as_bytes());
         match parsed_node {
-            IResult::Done(x, tup)=>{
+            IResult::Done(x, tup) => {
                 assert_eq!(tup.1,  HamlCode::CodeBlock("prints".to_string()));
             }
-            _ => { assert_eq!(false, true); }
+            _ => {
+                assert_eq!(false, true);
+            }
         }
     }
 
@@ -221,10 +228,12 @@ mod tests {
         let empty = &b""[..];
         let parsed_node = haml_line("%p".as_bytes());
         match parsed_node {
-            IResult::Done(x, tup)=>{
+            IResult::Done(x, tup) => {
                 assert_eq!(tup.1,  HamlCode::HamlNodeBlock(node.clone()));
             }
-            _ => { assert_eq!(false, true); }
+            _ => {
+                assert_eq!(false, true);
+            }
         }
     }
 
