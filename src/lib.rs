@@ -2,10 +2,11 @@
 #[macro_use] extern crate pest;
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate nom;
-use nom::{IResult,anychar, digit, space, alpha, alphanumeric, line_ending};
-use std::str::{self, FromStr};
+use nom::{anychar,  space, alphanumeric, };
+use std::str::{self};
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 struct HAMLParser {
@@ -14,6 +15,7 @@ struct HAMLParser {
 }
 
 type AttrMap = HashMap<String, String>;
+
 type ContextCode = String;
 type Text = String;
 
@@ -98,7 +100,6 @@ named!(attribute_hash_key_value<(&str, &str)>,
       );
 
 named!(attributes_list<AttrMap>,
-       dbg_dmp!(
             map!(
            ws!(
                 delimited!(
@@ -118,7 +119,6 @@ named!(attributes_list<AttrMap>,
                     h
                 }
         )
-    )
 );
 
 named!(html_tag<(HamlNode)>,
@@ -147,13 +147,14 @@ named!(html_line<(Vec<&str>, HamlNode)>,
                )
        );
 
-named!(the_rest<(String)>,
+named!(the_rest<(Text)>,
        do_parse!(
                contents: many0!(anychar)>>
-               (contents.into_iter().collect::<String>())
+               (contents.into_iter().collect::<Text>())
                 )
        );
 
+#[derive(Debug, Clone, PartialEq)]
 enum HamlCode{
     HamlNodeBlock(HamlNode),
     CodeBlock(ContextCode),
@@ -164,17 +165,68 @@ named!(haml_line<(Vec<&str>, HamlCode)>,
        do_parse!(
                whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
                line: alt!(
-                    html_tag => { |h|       HamlCode::HamlNodeBlock(h)  }   |
+                    // context before tag. tag can include context
                     context_lookup => { |h| HamlCode::CodeBlock(h)      }   |
+                    html_tag => { |h|       HamlCode::HamlNodeBlock(h)  }   |
                     the_rest => { |h|       HamlCode::TextBlock(h)      }
                 )>> 
                (whitespace, line)
                )
        );
+
 #[cfg(test)]
 mod tests {
+    //#![feature(trace_macros)]
     use nom::IResult;
     use super::*;
+
+    #[test]
+    fn it_parses_haml_line_text_only() {
+        let empty = &b""[..];
+        let parsed_node = haml_line("prints".as_bytes());
+        match parsed_node {
+            IResult::Done(x, tup)=>{
+                assert_eq!(tup.1,  HamlCode::TextBlock("prints".to_string()));
+            }
+            _ => { assert_eq!(false, true); }
+        }
+    }
+
+
+    #[test]
+    fn it_parses_haml_line_context_block() {
+        let empty = &b""[..];
+        let parsed_node = haml_line("= prints".as_bytes());
+        match parsed_node {
+            IResult::Done(x, tup)=>{
+                assert_eq!(tup.1,  HamlCode::CodeBlock("prints".to_string()));
+            }
+            _ => { assert_eq!(false, true); }
+        }
+    }
+
+
+    #[test]
+    fn it_parses_haml_line_haml_tag() {
+        let node = HamlNode {
+            class: vec![],
+            children: vec![],
+            tag: "p".to_string(),
+            id: None,
+            context_lookup: None,
+            contents: "".to_string(),
+            attributes: None,
+        };
+
+        let empty = &b""[..];
+        let parsed_node = haml_line("%p".as_bytes());
+        match parsed_node {
+            IResult::Done(x, tup)=>{
+                assert_eq!(tup.1,  HamlCode::HamlNodeBlock(node.clone()));
+            }
+            _ => { assert_eq!(false, true); }
+        }
+    }
 
     #[test]
     fn it_parses_tag_id() {
