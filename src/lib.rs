@@ -197,10 +197,10 @@ impl HAMLParser {
             match tag {
                 IResult::Done(_, (whitespace, haml_code)) => {
                     let current_depth = if whitespacer.is_some() {
-                        
+
                         // TODO: make sure they are the same type of spacing
                         // TODO: make sure its a valid count not 3 spaces
-                        whitespace.len() / whitespacer.as_ref().unwrap().len() 
+                        whitespace.len() / whitespacer.as_ref().unwrap().len()
                     } else if whitespace.len() != 0 && whitespacer.is_none() {
                         whitespacer = Some(whitespace.into_iter().collect::<String>());
                         1
@@ -234,13 +234,15 @@ impl HAMLParser {
                             panic!("Jumped depth to far from {} to {}", previous_depth, current_depth);
                             // current_node.parent n times is now current node
                         } else {
-                            //TODO remove clones
+                            // TODO remove clones
                             let mut parent = current_node.as_ref().unwrap().clone();
-                            for _ in 0..(previous_depth - current_depth)+1 {
-                               match tree.get(&parent).unwrap().parent(){
-                                   Some(parent_id) => { parent = parent_id.clone();},
-                                   None => panic!("unwinding to far current depth {} new {}", previous_depth, current_depth)
-                               }
+                            for _ in 0..(previous_depth - current_depth) + 1 {
+                                match tree.get(&parent).unwrap().parent() {
+                                    Some(parent_id) => {
+                                        parent = parent_id.clone();
+                                    }
+                                    None => panic!("unwinding to far current depth {} new {}", previous_depth, current_depth),
+                                }
                             }
                             current_node = Some(parent);
 
