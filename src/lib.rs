@@ -5,17 +5,16 @@ extern crate pest;
 extern crate error_chain;
 #[macro_use]
 extern crate nom;
+extern crate id_tree;
+use id_tree::InsertBehavior::*;
+use id_tree::*;
 use nom::{anychar, space, alphanumeric};
+use nom::IResult;
 use std::str;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
-
-struct HAMLParser {
-    haml: String,
-    context: HashMap<String, Arc<fmt::Display>>,
-}
 
 type AttrMap = HashMap<String, String>;
 
@@ -24,14 +23,23 @@ type Text = String;
 
 #[derive(Debug, Clone, PartialEq)]
 struct HamlNode {
-    children: Vec<HamlNode>,
-    tag: String,
-    attributes: Option<AttrMap>,
-    id: Option<String>,
-    context_lookup: Option<ContextCode>,
-    contents: String,
-    class: Vec<String>,
+    pub children: Vec<HamlCode>,
+    pub tag: String,
+    pub attributes: Option<AttrMap>,
+    pub id: Option<String>,
+    pub context_lookup: Option<ContextCode>,
+    pub contents: String,
+    pub class: Vec<String>,
 }
+
+
+#[derive(Debug, Clone, PartialEq)]
+enum HamlCode {
+    HamlNodeBlock(HamlNode),
+    CodeBlock(ContextCode),
+    TextBlock(Text),
+}
+
 
 named!(context_lookup<ContextCode>,
        chain!(
@@ -157,13 +165,6 @@ do_parse!(
     )
 );
 
-#[derive(Debug, Clone, PartialEq)]
-enum HamlCode {
-    HamlNodeBlock(HamlNode),
-    CodeBlock(ContextCode),
-    TextBlock(Text),
-}
-
 named!(haml_line<(Vec<&str>, HamlCode)>,
 do_parse!(
     whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
@@ -177,13 +178,132 @@ do_parse!(
     )
 );
 
+struct HAMLParser {
+    haml: String,
+    nodes: Option<Tree<HamlCode>>,
+}
+
+impl HAMLParser {
+    fn display(self, context: HashMap<String, Arc<fmt::Display>>) -> String {
+        "".to_string()
+    }
+    fn parse(&mut self) -> Result<(), ()> {
+        let mut tree: Tree<HamlCode> = Tree::new();
+        let mut previous_depth = 0;
+        let mut current_node: Option<NodeId> = None;
+        let mut whitespacer: Option<String> = None;
+        for line in self.haml.lines() {
+            let tag = haml_line(line.as_bytes());
+            match tag {
+                IResult::Done(_, (whitespace, haml_code)) => {
+                    let current_depth = if whitespacer.is_some() {
+                        
+                        // TODO: make sure they are the same type of spacing
+                        // TODO: make sure its a valid count not 3 spaces
+                        whitespace.len() / whitespacer.as_ref().unwrap().len() 
+                    } else if whitespace.len() != 0 && whitespacer.is_none() {
+                        whitespacer = Some(whitespace.into_iter().collect::<String>());
+                        1
+                    } else {
+                        0
+                    };
+
+                    // depth is greater change the current stack to the last child of the
+                    // previous_depth
+                    // if depth is less pop depth times
+                    // if its the same its another child?
+                    println!("{} {}", previous_depth, current_depth);
+                    if current_node.is_some() {
+                        if current_depth == previous_depth {
+                            let child_node = Node::new(haml_code);
+                            tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
+                                .unwrap();
+                        } else if current_depth == previous_depth + 1 {
+                            // get last child. this is now the current node
+                            let child_node = Node::new(haml_code);
+                            tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
+                                .unwrap();
+
+                            let last_child = {
+                                let node = tree.get(current_node.as_ref().unwrap()).unwrap();
+                                // TODO remove clone?
+                                node.children().last().unwrap().clone()
+                            };
+                            current_node = Some(last_child);
+                        } else if current_depth > previous_depth {
+                            panic!("Jumped depth to far from {} to {}", previous_depth, current_depth);
+                            // current_node.parent n times is now current node
+                        } else {
+                            //TODO remove clones
+                            let mut parent = current_node.as_ref().unwrap().clone();
+                            for _ in 0..(previous_depth - current_depth)+1 {
+                               match tree.get(&parent).unwrap().parent(){
+                                   Some(parent_id) => { parent = parent_id.clone();},
+                                   None => panic!("unwinding to far current depth {} new {}", previous_depth, current_depth)
+                               }
+                            }
+                            current_node = Some(parent);
+
+                            let child_node = Node::new(haml_code);
+                            current_node = Some(tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
+                                .unwrap());
+                        }
+                    } else {
+                        match haml_code {
+                            HamlCode::HamlNodeBlock(_) => {
+                                current_node = Some(tree.insert(Node::new(haml_code), AsRoot)
+                                    .unwrap());
+                            }
+                            _ => panic!("No base node in stack found {:?}", haml_code),
+                        }
+                    }
+                    previous_depth = current_depth;
+                }
+                _ => {}
+            }
+
+        }
+        self.nodes = Some(tree);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //#![feature(trace_macros)]
     use nom::IResult;
     use super::*;
+    fn print_pre_order(buffer: String, tree: &Tree<HamlCode>, node_id: &NodeId) {
+        let node_ref = tree.get(node_id).unwrap();
+
+        println!("{}{:?}", buffer, node_ref.data());
+
+        for child_id in node_ref.children() {
+            let new_buff = format!("{}  ",buffer);
+            print_pre_order(new_buff, tree, &child_id);
+        }
+    }
+    #[test]
+    fn it_parses_simple_string() {
+        let haml = r#"%p 
+  .give
+    .up
+      now
+    .or
+      later
+"#;
+        let mut parser = HAMLParser {
+            nodes: None,
+            haml: haml.to_string(),
+        };
+        parser.parse();
+        let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
+
+    }
 
     #[test]
+    #[ignore]
     fn it_parses_haml_line_text_only() {
         let empty = &b""[..];
         let parsed_node = haml_line("prints".as_bytes());
@@ -268,6 +388,24 @@ mod tests {
         assert_eq!(html_line("  %p".as_bytes()), IResult::Done(empty, (vec![" "," "], node)));
     }
 
+    #[test]
+    #[ignore]
+    fn it_parses_html_tag_requires_tag() {
+        let empty = &b""[..];
+        let mut attrs = AttrMap::new();
+
+        let node = HamlNode {
+            class: vec![],
+            children: vec![],
+            tag: "p".to_string(),
+            id: None,
+            context_lookup: None,
+            contents: "".to_string(),
+            attributes: None,
+        };
+        // should be incomplete
+        assert_eq!(html_tag("just the text".as_bytes()), IResult::Done(empty, (node)));
+    }
     #[test]
     fn it_parses_html_tag() {
         let empty = &b""[..];
