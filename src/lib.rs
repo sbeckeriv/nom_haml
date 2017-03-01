@@ -188,11 +188,21 @@ impl HAMLParser {
         "".to_string()
     }
     fn parse(&mut self) -> Result<(), ()> {
+        fn parent_id(tree: &Tree<HamlCode>, current_node: &Option<NodeId>) -> Option<NodeId> {
+            let parent = current_node.as_ref().unwrap().clone();
+            match tree.get(&parent).unwrap().parent() {
+                Some(parent_id) => Some(parent_id.clone()),
+                None => None,
+            }
+        }
         let mut tree: Tree<HamlCode> = Tree::new();
         let mut previous_depth = 0;
         let mut current_node: Option<NodeId> = None;
         let mut whitespacer: Option<String> = None;
+        let mut was_self_closing = false;
+        let mut was_tag_block = false;
         for line in self.haml.lines() {
+            println!("{}",line);
             let tag = haml_line(line.as_bytes());
             match tag {
                 IResult::Done(_, (whitespace, haml_code)) => {
@@ -213,35 +223,74 @@ impl HAMLParser {
                     // if depth is less pop depth times
                     // if its the same its another child?
                     println!("{} {}", previous_depth, current_depth);
+                    println!("was closing{}  was block{}", was_self_closing, was_tag_block);
+                    let is_self_closing = match haml_code {
+                        HamlCode::HamlNodeBlock(ref node) => !node.contents.trim_left().is_empty(),
+                        _ => false,
+                    };
+
+                    let is_tag_block = match haml_code {
+                        HamlCode::HamlNodeBlock(ref node) => true,
+                        _ => false,
+                    };
+                    println!("is closing{}  is block{}", is_self_closing,is_tag_block);
                     if current_node.is_some() {
                         if current_depth == previous_depth {
+                            if !was_self_closing && (was_tag_block && is_tag_block) {
+                                    match parent_id(&tree, &current_node){
+                                        Some(parent_id) => {
+                                            let parent = parent_id.clone();
+                                            current_node = Some(parent);
+                                        }
+                                        None => {
+                                            panic!("unwinding to far current depth {} new {}\n{}", 
+                                                       previous_depth, current_depth, line)
+                                        }
+                                    }
+                                }
+                            println!("same");
                             let child_node = Node::new(haml_code);
                             tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
                                 .unwrap();
+                            if !is_self_closing {
+                                let last_child = {
+                                    let node = tree.get(current_node.as_ref().unwrap()).unwrap();
+                                    // TODO remove clone?
+                                    node.children().last().unwrap().clone()
+                                };
+                                current_node = Some(last_child);
+                            }
                         } else if current_depth == previous_depth + 1 {
                             // get last child. this is now the current node
+                            println!("out");
                             let child_node = Node::new(haml_code);
                             tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
                                 .unwrap();
-
-                            let last_child = {
-                                let node = tree.get(current_node.as_ref().unwrap()).unwrap();
-                                // TODO remove clone?
-                                node.children().last().unwrap().clone()
-                            };
-                            current_node = Some(last_child);
+                            if !is_self_closing {
+                                let last_child = {
+                                    let node = tree.get(current_node.as_ref().unwrap()).unwrap();
+                                    // TODO remove clone?
+                                    node.children().last().unwrap().clone()
+                                };
+                                current_node = Some(last_child);
+                            }
                         } else if current_depth > previous_depth {
-                            panic!("Jumped depth to far from {} to {}", previous_depth, current_depth);
+                            panic!("Jumped depth to far from {} to {}\n{}", previous_depth, current_depth,line);
                             // current_node.parent n times is now current node
                         } else {
+                            println!("in");
                             // TODO remove clones
                             let mut parent = current_node.as_ref().unwrap().clone();
+                            println!("-{}", (previous_depth - current_depth)+1);
                             for _ in 0..(previous_depth - current_depth) + 1 {
                                 match tree.get(&parent).unwrap().parent() {
                                     Some(parent_id) => {
                                         parent = parent_id.clone();
                                     }
-                                    None => panic!("unwinding to far current depth {} new {}", previous_depth, current_depth),
+                                    None => {
+                                        panic!("unwinding to far current depth {} new {}\n{}", 
+                                                   previous_depth, current_depth, line)
+                                    }
                                 }
                             }
                             current_node = Some(parent);
@@ -259,6 +308,8 @@ impl HAMLParser {
                             _ => panic!("No base node in stack found {:?}", haml_code),
                         }
                     }
+                    was_tag_block = is_tag_block;
+                    was_self_closing = is_self_closing;
                     previous_depth = current_depth;
                 }
                 _ => {}
@@ -286,13 +337,36 @@ mod tests {
         }
     }
     #[test]
-    fn it_parses_simple_string() {
-        let haml = r#"%p 
-  .give
-    .up
-      now
-    .or
-      later
+    fn it_parser_empty_tag() {
+        let haml = r#"
+%p
+  .1
+    .20 
+    .21
+      .210
+    .22
+      .220
+"#;
+        let mut parser = HAMLParser {
+            nodes: None,
+            haml: haml.to_string(),
+        };
+        parser.parse();
+        let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
+
+    }
+
+    #[test]
+    fn it_parser_self_closing() {
+        let haml = r#"
+%p
+  .1
+    .20 200
+    .21
+      .210
+    .22
+      .220
 "#;
         let mut parser = HAMLParser {
             nodes: None,
