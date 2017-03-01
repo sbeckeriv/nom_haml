@@ -16,6 +16,8 @@ use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+static NUMBERS: [&str] = ['area', 'base', 'br', 'col', 'command', 'embed', 'hr', 'img', 'input', 'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr']
+
 type AttrMap = HashMap<String, String>;
 
 type ContextCode = String;
@@ -23,7 +25,6 @@ type Text = String;
 
 #[derive(Debug, Clone, PartialEq)]
 struct HamlNode {
-    pub children: Vec<HamlCode>,
     pub tag: String,
     pub attributes: Option<AttrMap>,
     pub id: Option<String>,
@@ -140,7 +141,7 @@ do_parse!(
     attributes_list: opt!(complete!(attributes_list)) >>
     context_lookup: opt!(complete!(context_lookup)) >>
     contents: many0!(anychar) >>
-    (HamlNode{children: vec![], tag: String::from(tag.unwrap_or("div")),
+    (HamlNode{tag: String::from(tag.unwrap_or("div")),
     id: id.map(|text| String::from(text)),
     contents: contents.into_iter().collect::<String>(),
     attributes: attributes_list,
@@ -250,14 +251,10 @@ impl HAMLParser {
                                 }
                             println!("same");
                             let child_node = Node::new(haml_code);
-                            tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
+                            let last_child = tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
                                 .unwrap();
+
                             if !is_self_closing {
-                                let last_child = {
-                                    let node = tree.get(current_node.as_ref().unwrap()).unwrap();
-                                    // TODO remove clone?
-                                    node.children().last().unwrap().clone()
-                                };
                                 current_node = Some(last_child);
                             }
                         } else if current_depth == previous_depth + 1 {
@@ -413,7 +410,6 @@ mod tests {
     fn it_parses_haml_line_haml_tag() {
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             id: None,
             context_lookup: None,
@@ -452,7 +448,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             id: None,
             context_lookup: None,
@@ -472,7 +467,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             id: None,
             context_lookup: None,
@@ -489,7 +483,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             id: None,
             context_lookup: None,
@@ -500,7 +493,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             id: None,
             context_lookup: None,
@@ -511,7 +503,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
             context_lookup: None,
@@ -522,7 +513,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec!["pan".to_string(),"cakes".to_string()],
-            children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
             context_lookup: None,
@@ -534,7 +524,6 @@ mod tests {
         attrs.insert("d".to_string(), "3".to_string());
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
             context_lookup: None,
@@ -545,7 +534,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
             context_lookup: None,
@@ -556,7 +544,6 @@ mod tests {
 
         let node = HamlNode {
             class: vec![],
-            children: vec![],
             tag: "p".to_string(),
             contents: "".to_string(),
             context_lookup: Some("banana".to_string()),
