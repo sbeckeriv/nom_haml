@@ -44,8 +44,8 @@ enum HamlCode {
 named!(context_lookup<ContextCode>,
        chain!(
            tag!("= ") ~
-           data: map_res!( alphanumeric, std::str::from_utf8),
-           || ContextCode::from(data)
+           data: many1!(anychar),
+           || ContextCode::from(data.into_iter().collect::<String>())
            )
       );
 
@@ -397,8 +397,14 @@ mod tests {
     fn it_parser_scratch() {
         let haml = r#"
 %ul
+  %li
+  %li= smoked_salt 
+  %li
+    %br
+    = salt_box 
   %li Salt
-  %li Pepper
+  %li 
+    Pepper
 "#;
         let mut parser = HAMLParser {
             nodes: None,
@@ -549,22 +555,6 @@ mod tests {
         assert_eq!(html_line("  %p".as_bytes()), IResult::Done(empty, (vec![" "," "], node)));
     }
 
-    #[test]
-    #[ignore]
-    fn it_parses_html_tag_requires_tag() {
-        let empty = &b""[..];
-
-        let node = HamlNode {
-            class: vec![],
-            tag: "p".to_string(),
-            id: None,
-            context_lookup: None,
-            contents: "".to_string(),
-            attributes: None,
-        };
-        // should be incomplete
-        assert_eq!(html_tag("just the text".as_bytes()), IResult::Done(empty, (node)));
-    }
     #[test]
     fn it_parses_html_tag() {
         let empty = &b""[..];
