@@ -132,20 +132,61 @@ named!(attributes_list<AttrMap>,
            )
       );
 
+named!(only_classes<(Option<&str>,Option<&str>,Vec<String>)>,
+do_parse!(
+    class: many1!(tag_class) >>
+    (None, None, class.into_iter().map(|text| String::from(text)).collect())
+    )
+);
+
+named!(only_id<(Option<&str>,Option<&str>,Vec<String>)>,
+do_parse!(
+    id: tag_id >>
+    class: many0!(tag_class) >>
+    (None, Some(id), class.into_iter().map(|text| String::from(text)).collect())
+    )
+);
+
+named!(only_tag<(Option<&str>,Option<&str>,Vec<String>)>,
+do_parse!(
+    tag: tag_named >>
+    class: many0!(tag_class) >>
+    (Some(tag), None, class.into_iter().map(|text| String::from(text)).collect())
+    )
+);
+named!(only_tag2<(Option<&str>,Option<&str>,Vec<String>)>,
+do_parse!(
+    tag: tag_named >>
+    (Some(tag), None, vec![])
+    )
+);
+
+named!(full_set<(Option<&str>,Option<&str>,Vec<String>)>,
+do_parse!(
+    tag: tag_named >>
+    id: tag_id >>
+    class: many0!(tag_class) >>
+    (Some(tag), Some(id), class.into_iter().map(|text| String::from(text)).collect())
+    )
+);
+
 named!(html_tag<(HamlNode)>,
 do_parse!(
-    tag: opt!(complete!(tag_named)) >>
-    id: opt!(complete!(tag_id)) >>
-    class: many0!(tag_class) >>
+    tag_id_class: alt!(
+       complete!(full_set) |
+       complete!(only_tag) |
+       complete!(only_id)  |
+       complete!(only_classes)
+    ) >>
     attributes_list: opt!(complete!(attributes_list)) >>
     context_lookup: opt!(complete!(context_lookup)) >>
     contents: many0!(anychar) >>
-    (HamlNode{tag: String::from(tag.unwrap_or("div")),
-    id: id.map(|text| String::from(text)),
+    (HamlNode{tag: String::from(tag_id_class.0.unwrap_or("div")),
+    id: tag_id_class.1.map(|text| String::from(text)),
     contents: contents.into_iter().collect::<String>(),
     attributes: attributes_list,
     context_lookup: context_lookup,
-    class: class.into_iter().map(|text| String::from(text)).collect(),
+    class: tag_id_class.2,
     })
     )
 );
