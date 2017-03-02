@@ -1,8 +1,5 @@
 #![recursion_limit = "300"]
-#![feature(static_in_const)]
-#[macro_use]
 extern crate pest;
-#[macro_use]
 extern crate error_chain;
 #[macro_use]
 extern crate nom;
@@ -14,7 +11,6 @@ use nom::IResult;
 use std::str;
 use std::collections::HashMap;
 use std::fmt;
-use std::fmt::Debug;
 use std::sync::Arc;
 
 pub const SELF_CLOSING: [&str; 16] = ["area", "base", "br", "col", "command", "embed", "hr",
@@ -188,10 +184,28 @@ struct HAMLParser {
 }
 
 impl HAMLParser {
-    fn display(self, context: HashMap<String, Arc<fmt::Display>>) -> String {
-        "".to_string()
+    pub fn string_pre_order(buffer: String, tree: &Tree<HamlCode>, node_id: &NodeId) -> String {
+        let node_ref = tree.get(node_id).unwrap();
+
+        let parent_str = format!("{}{:?}", buffer, node_ref.data());
+
+        let childern_str = node_ref.children()
+            .iter()
+            .map(|child_id| {
+                let new_buff = format!("{}  ",buffer);
+                HAMLParser::string_pre_order(new_buff, tree, &child_id)
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        [parent_str, childern_str].join("\n")
     }
-    fn parse(&mut self) -> Result<(), ()> {
+
+    pub fn render(&self, context: HashMap<String, Arc<fmt::Display>>) -> String {
+        let root = self.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        HAMLParser::string_pre_order("".to_string(), self.nodes.as_ref().unwrap(), &root)
+    }
+
+    pub fn parse(&mut self) -> Result<(), ()> {
         fn parent_id(tree: &Tree<HamlCode>, current_node: &Option<NodeId>) -> Option<NodeId> {
             let parent = current_node.as_ref().unwrap().clone();
             match tree.get(&parent).unwrap().parent() {
@@ -211,7 +225,6 @@ impl HAMLParser {
             match tag {
                 IResult::Done(_, (whitespace, haml_code)) => {
                     let current_depth = if whitespacer.is_some() {
-
                         // TODO: make sure they are the same type of spacing
                         // TODO: make sure its a valid count not 3 spaces
                         whitespace.len() / whitespacer.as_ref().unwrap().len()
@@ -226,8 +239,6 @@ impl HAMLParser {
                     // previous_depth
                     // if depth is less pop depth times
                     // if its the same its another child?
-                    println!("{} {}", previous_depth, current_depth);
-                    println!("was closing{}  was block{}", was_self_closing, was_tag_block);
                     let is_self_closing = match haml_code {
                         HamlCode::HamlNodeBlock(ref node) => {
                             !node.contents.trim_left().is_empty() ||
@@ -237,10 +248,9 @@ impl HAMLParser {
                     };
 
                     let is_tag_block = match haml_code {
-                        HamlCode::HamlNodeBlock(ref node) => true,
+                        HamlCode::HamlNodeBlock(_) => true,
                         _ => false,
                     };
-                    println!("is closing{}  is block{}", is_self_closing,is_tag_block);
                     if current_node.is_some() {
                         if current_depth == previous_depth {
                             if !was_self_closing && (was_tag_block && is_tag_block) {
@@ -255,7 +265,6 @@ impl HAMLParser {
                                     }
                                 }
                             }
-                            println!("same");
                             let child_node = Node::new(haml_code);
                             let last_child =
                                 tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
@@ -266,11 +275,10 @@ impl HAMLParser {
                             }
                         } else if current_depth == previous_depth + 1 {
                             // get last child. this is now the current node
-                            println!("out");
                             let child_node = Node::new(haml_code);
                             tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
                                 .unwrap();
-                            
+
                             if !is_self_closing {
                                 let last_child = {
                                     let node = tree.get(current_node.as_ref().unwrap()).unwrap();
@@ -283,20 +291,16 @@ impl HAMLParser {
                             panic!("Jumped depth to far from {} to {}\n{}", previous_depth, current_depth,line);
                             // current_node.parent n times is now current node
                         } else {
-                            println!("in");
                             // TODO remove clones
                             let mut parent_node = current_node.clone();
                             let mut depth_run = previous_depth - current_depth;
-                            if !was_self_closing{
+                            if !was_self_closing {
                                 depth_run += 1;
                             }
 
-                            println!("depth_run {}", depth_run);
-                            for i in 0..depth_run {
-                                println!("parent pop {}",i);
+                            for _ in 0..depth_run {
                                 match parent_id(&tree, &parent_node) {
                                     Some(parent_node_id) => {
-                                        println!("{:?}",parent_node_id);
                                         parent_node = Some(parent_node_id.clone());
                                     }
                                     None => {
@@ -351,17 +355,15 @@ mod tests {
     #[test]
     fn it_parser_scratch() {
         let haml = r#"
-%p
-  .10
-    %br
-  .11
-  .12
+%ul
+  %li Salt
+  %li Pepper
 "#;
         let mut parser = HAMLParser {
             nodes: None,
             haml: haml.to_string(),
         };
-        parser.parse();
+        parser.parse().unwrap();
         let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
         print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
 
@@ -380,7 +382,7 @@ mod tests {
             nodes: None,
             haml: haml.to_string(),
         };
-        parser.parse();
+        parser.parse().unwrap();
         let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
         print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
 
@@ -400,7 +402,7 @@ mod tests {
             nodes: None,
             haml: haml.to_string(),
         };
-        parser.parse();
+        parser.parse().unwrap();
         let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
         print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
 
@@ -421,19 +423,17 @@ mod tests {
             nodes: None,
             haml: haml.to_string(),
         };
-        parser.parse();
+        parser.parse().unwrap();
         let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
         print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
 
     }
 
     #[test]
-    #[ignore]
     fn it_parses_haml_line_text_only() {
-        let empty = &b""[..];
         let parsed_node = haml_line("prints".as_bytes());
         match parsed_node {
-            IResult::Done(x, tup) => {
+            IResult::Done(_, tup) => {
                 assert_eq!(tup.1,  HamlCode::TextBlock("prints".to_string()));
             }
             _ => {
@@ -445,10 +445,9 @@ mod tests {
 
     #[test]
     fn it_parses_haml_line_context_block() {
-        let empty = &b""[..];
         let parsed_node = haml_line("= prints".as_bytes());
         match parsed_node {
-            IResult::Done(x, tup) => {
+            IResult::Done(_, tup) => {
                 assert_eq!(tup.1,  HamlCode::CodeBlock("prints".to_string()));
             }
             _ => {
@@ -469,10 +468,9 @@ mod tests {
             attributes: None,
         };
 
-        let empty = &b""[..];
         let parsed_node = haml_line("%p".as_bytes());
         match parsed_node {
-            IResult::Done(x, tup) => {
+            IResult::Done(_, tup) => {
                 assert_eq!(tup.1,  HamlCode::HamlNodeBlock(node.clone()));
             }
             _ => {
@@ -496,7 +494,6 @@ mod tests {
     #[test]
     fn it_parses_html_line() {
         let empty = &b""[..];
-        let mut attrs = AttrMap::new();
 
         let node = HamlNode {
             class: vec![],
@@ -515,7 +512,6 @@ mod tests {
     #[ignore]
     fn it_parses_html_tag_requires_tag() {
         let empty = &b""[..];
-        let mut attrs = AttrMap::new();
 
         let node = HamlNode {
             class: vec![],
@@ -531,7 +527,6 @@ mod tests {
     #[test]
     fn it_parses_html_tag() {
         let empty = &b""[..];
-        let mut attrs = AttrMap::new();
 
         let node = HamlNode {
             class: vec![],
@@ -573,6 +568,7 @@ mod tests {
         };
         assert_eq!(html_tag("%p#banana.pan.cakes".as_bytes()), IResult::Done(empty, (node)));
 
+        let mut attrs = AttrMap::new();
         attrs.insert("d".to_string(), "3".to_string());
         let node = HamlNode {
             class: vec![],
