@@ -13,15 +13,29 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
+// Move to HashSet
 pub const SELF_CLOSING: [&str; 16] = ["area", "base", "br", "col", "command", "embed", "hr",
                                       "img", "input", "keygen", "link", "meta", "param", "source",
                                       "track", "wbr"];
+trait HtmlDisplay {
+    fn hat(&self) -> String;
+    fn pants(&self) -> Option<String> {
+        None
+    }
+}
 
 type AttrMap = HashMap<String, String>;
 
 type ContextCode = String;
 type CodeRun = String;
 type Text = String;
+
+// this wont fly in the future gonna need make real structs
+impl HtmlDisplay for Text {
+    fn hat(&self) -> String {
+        self.clone()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 struct HamlNode {
@@ -33,11 +47,45 @@ struct HamlNode {
     pub class: Vec<String>,
 }
 
+impl HtmlDisplay for HamlNode {
+    fn hat(&self) -> String {
+        let mut string = format!("<{} ", self.tag);
+        if let Some(id) = self.id.as_ref() {
+            string.push_str(&format!("id=\"{}\" ", id));
+        }
+        if let Some(attrs) = self.attributes.as_ref() {
+            for (k, v) in attrs {
+                string.push_str(&format!("{}=\"{}\" ", k, v));
+            }
+        }
+        if self.class.len() > 0 {
+            string.push_str(&format!("class=\"{}\" ", self.class.join(" ")));
+        }
+
+        if SELF_CLOSING.iter().any(|&tag| tag == self.tag) {
+            string.push_str("/>")
+        } else {
+            string.push_str(&format!(">{}", self.contents))
+        }
+        // context lookup
+        string
+    }
+
+    fn pants(&self) -> Option<String> {
+        if SELF_CLOSING.iter().any(|&tag| tag == self.tag) {
+            None
+        } else {
+            Some(format!("</{}>", self.tag))
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq)]
 enum HamlCode {
     HamlNodeBlock(HamlNode),
-    CodeBlock(ContextCode),
+    CodeBlock(CodeRun),
+    ContextBlock(ContextCode),
     TextBlock(Text),
 }
 
@@ -220,7 +268,7 @@ do_parse!(
     whitespace: many0!(map_res!(alt!(tag!(" ")|tag!("\t")), str::from_utf8)) >>
     line: alt!(
         // context before tag. tag can include context
-        context_lookup => { |h| HamlCode::CodeBlock(h)      }   |
+        context_lookup => { |h| HamlCode::ContextBlock(h)      }   |
         code_run => { |h|       HamlCode::CodeBlock(h)      }   |
         html_tag => { |h|       HamlCode::HamlNodeBlock(h)  }   |
         the_rest => { |h|       HamlCode::TextBlock(h)      }
@@ -237,8 +285,21 @@ struct HAMLParser {
 impl HAMLParser {
     pub fn string_pre_order(buffer: String, tree: &Tree<HamlCode>, node_id: &NodeId) -> String {
         let node_ref = tree.get(node_id).unwrap();
+        let (hat, pants) = match *node_ref.data() {
 
-        let parent_str = format!("{}{:?}", buffer, node_ref.data());
+            HamlCode::HamlNodeBlock(ref node) => {
+                (node.hat(), node.pants().unwrap_or("".to_string()))
+            }
+            HamlCode::ContextBlock(ref node) => {
+                (node.hat(), node.pants().unwrap_or("".to_string()))
+            }
+            HamlCode::TextBlock(ref node) => (node.hat(), node.pants().unwrap_or("".to_string())),
+
+            HamlCode::CodeBlock(ref node) => (node.hat(), node.pants().unwrap_or("".to_string())),
+            _ => ("".to_string(), "".to_string()),
+        };
+        let parent_hat = format!("{}{}", buffer, hat);
+        let parent_pants = format!("{}{}", buffer, pants);
 
         let childern_str = node_ref.children()
             .iter()
@@ -248,10 +309,15 @@ impl HAMLParser {
             })
             .collect::<Vec<String>>()
             .join("\n");
-        [parent_str, childern_str].join("\n")
+        let mut list = vec![parent_hat, childern_str];
+        if parent_pants.trim().len()>0{
+            list.push(parent_pants);
+        }
+
+        list.join("\n")
     }
 
-    pub fn render(&self, context: HashMap<String, Arc<fmt::Display>>) -> String {
+    pub fn render(&self, context: Option<HashMap<String, Arc<fmt::Display>>>) -> String {
         let root = self.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
         HAMLParser::string_pre_order("".to_string(), self.nodes.as_ref().unwrap(), &root)
     }
@@ -423,7 +489,10 @@ mod tests {
         };
         parser.parse().unwrap();
         let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
-        print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
+        {
+            print_pre_order("".to_string(), &parser.nodes.as_ref().unwrap(), &root);
+        }
+        println!("{}",parser.render(None));
 
     }
 
@@ -506,7 +575,7 @@ mod tests {
         let parsed_node = haml_line("= prints".as_bytes());
         match parsed_node {
             IResult::Done(_, tup) => {
-                assert_eq!(tup.1,  HamlCode::CodeBlock("prints".to_string()));
+                assert_eq!(tup.1,  HamlCode::ContextBlock("prints".to_string()));
             }
             _ => {
                 assert_eq!(false, true);
