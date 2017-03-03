@@ -20,6 +20,7 @@ pub const SELF_CLOSING: [&str; 16] = ["area", "base", "br", "col", "command", "e
 type AttrMap = HashMap<String, String>;
 
 type ContextCode = String;
+type CodeRun = String;
 type Text = String;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +41,14 @@ enum HamlCode {
     TextBlock(Text),
 }
 
+
+named!(code_run<CodeRun>,
+       chain!(
+           tag!("- ") ~
+           data: many1!(anychar),
+           || CodeRun::from(data.into_iter().collect::<String>())
+           )
+      );
 
 named!(context_lookup<ContextCode>,
        chain!(
@@ -212,6 +221,7 @@ do_parse!(
     line: alt!(
         // context before tag. tag can include context
         context_lookup => { |h| HamlCode::CodeBlock(h)      }   |
+        code_run => { |h|       HamlCode::CodeBlock(h)      }   |
         html_tag => { |h|       HamlCode::HamlNodeBlock(h)  }   |
         the_rest => { |h|       HamlCode::TextBlock(h)      }
         )>> 
@@ -400,7 +410,8 @@ mod tests {
   %li
   %li= smoked_salt 
   %li
-    %br
+    - if true
+      %br
     = salt_box 
   %li Salt
   %li 
