@@ -325,7 +325,7 @@ impl HAMLParser {
         HAMLParser::string_pre_order("".to_string(), self.nodes.as_ref().unwrap(), &root)
     }
 
-    pub fn parse(&mut self) -> Result<(), ()> {
+    pub fn parse(&mut self) -> Result<(), String> {
         fn parent_id(tree: &Tree<HamlCode>, current_node: &Option<NodeId>) -> Option<NodeId> {
             let parent = current_node.as_ref().unwrap().clone();
             match tree.get(&parent).unwrap().parent() {
@@ -379,8 +379,8 @@ impl HAMLParser {
                                         current_node = Some(parent);
                                     }
                                     None => {
-                                        panic!("unwinding to far current depth {} new {}\n{}", 
-                                                       previous_depth, current_depth, line)
+                                        return Err(format!("unwinding to far current depth {} new {}\n{}", 
+                                                       previous_depth, current_depth, line))
                                     }
                                 }
                             }
@@ -406,7 +406,7 @@ impl HAMLParser {
                                 current_node = Some(last_child);
                             }
                         } else if current_depth > previous_depth {
-                            panic!("Jumped depth to far from {} to {}\n{}", previous_depth, current_depth,line);
+                            return Err(format!("Jumped depth to far from {} to {}\n{}", previous_depth, current_depth,line));
                         } else {
                             // TODO remove clones
                             let mut parent_node = current_node.clone();
@@ -421,8 +421,8 @@ impl HAMLParser {
                                         parent_node = Some(parent_node_id.clone());
                                     }
                                     None => {
-                                        panic!("unwinding to far current depth {} new {}\n{}", 
-                                                       previous_depth, current_depth, line)
+                                        return Err(format!("unwinding to far current depth {} new {}\n{}", 
+                                                       previous_depth, current_depth, line))
                                     }
                                 }
                             }
@@ -443,7 +443,7 @@ impl HAMLParser {
                                 current_node = Some(tree.insert(Node::new(haml_code), AsRoot)
                                     .unwrap());
                             }
-                            _ => panic!("No base node in stack found {:?}", haml_code),
+                            _ => return Err(format!("No base node in stack found {:?}", haml_code)),
                         }
                     }
                     was_tag_block = is_tag_block;
