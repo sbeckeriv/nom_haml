@@ -105,7 +105,7 @@ named!(context_lookup<ContextCode>,
            || ContextCode::from(data.into_iter().collect::<String>())
            )
       );
-
+// TODO: move to an char
 named!(single_quote_string<&str>,
        delimited!(
            tag!("'"),
@@ -129,7 +129,7 @@ named!(doctype<&str>,
            || data
            )
       );
-
+// TODO: -?[_a-zA-Z]+[_a-zA-Z0-9-]*
 named!(tag_class<&str>,
        chain!(
            tag!(".") ~
@@ -138,6 +138,7 @@ named!(tag_class<&str>,
            )
       );
 
+// TODO: figure out real limit
 named!(tag_id<&str>,
        chain!(
            tag!("#") ~
@@ -153,7 +154,7 @@ named!(tag_named<&str>,
            || tag
            )
       );
-
+// TODO: value should be more then alphanumeric
 named!(attribute_hash_key_value<(&str, &str)>,
 chain!(
     tag!(":") ~
@@ -332,6 +333,7 @@ impl HAMLParser {
                 None => None,
             }
         }
+        // TODO: create a base node because the doctype and html can be the same level
         let mut tree: Tree<HamlCode> = Tree::new();
         let mut previous_depth = 0;
         let mut current_node: Option<NodeId> = None;
@@ -339,7 +341,7 @@ impl HAMLParser {
         let mut was_self_closing = false;
         let mut was_tag_block = false;
         for line in self.haml.lines() {
-            println!("{}",line);
+            // println!("{}",line);
             let tag = haml_line(line.as_bytes());
             match tag {
                 IResult::Done(_, (whitespace, haml_code)) => {
@@ -354,10 +356,6 @@ impl HAMLParser {
                         0
                     };
 
-                    // depth is greater change the current stack to the last child of the
-                    // previous_depth
-                    // if depth is less pop depth times
-                    // if its the same its another child?
                     let is_self_closing = match haml_code {
                         HamlCode::HamlNodeBlock(ref node) => {
                             !node.contents.trim_left().is_empty() ||
@@ -370,8 +368,10 @@ impl HAMLParser {
                         HamlCode::HamlNodeBlock(_) => true,
                         _ => false,
                     };
+
                     if current_node.is_some() {
                         if current_depth == previous_depth {
+                            // support empty tags
                             if !was_self_closing && (was_tag_block && is_tag_block) {
                                 match parent_id(&tree, &current_node) {
                                     Some(parent_id) => {
@@ -393,7 +393,6 @@ impl HAMLParser {
                                 current_node = Some(last_child);
                             }
                         } else if current_depth == previous_depth + 1 {
-                            // get last child. this is now the current node
                             let child_node = Node::new(haml_code);
                             tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
                                 .unwrap();
@@ -408,7 +407,6 @@ impl HAMLParser {
                             }
                         } else if current_depth > previous_depth {
                             panic!("Jumped depth to far from {} to {}\n{}", previous_depth, current_depth,line);
-                            // current_node.parent n times is now current node
                         } else {
                             // TODO remove clones
                             let mut parent_node = current_node.clone();
@@ -457,6 +455,7 @@ impl HAMLParser {
 
         }
         self.nodes = Some(tree);
+        // Deal with panics as errors
         Ok(())
     }
 }
@@ -476,7 +475,7 @@ mod tests {
             print_pre_order(new_buff, tree, &child_id);
         }
     }
-
+    // TODO figure out real tests
     #[test]
     fn it_parser_scratch() {
         let haml = r#"
