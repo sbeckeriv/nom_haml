@@ -49,21 +49,21 @@ struct HamlNode {
 
 impl HtmlDisplay for HamlNode {
     fn hat(&self) -> String {
-        let mut string = format!("<{} ", self.tag);
+        let mut string = format!("<{}", self.tag);
         if let Some(id) = self.id.as_ref() {
-            string.push_str(&format!("id=\"{}\" ", id));
+            string.push_str(&format!(" id=\"{}\"", id));
         }
         if let Some(attrs) = self.attributes.as_ref() {
             for (k, v) in attrs {
-                string.push_str(&format!("{}=\"{}\" ", k, v));
+                string.push_str(&format!(" {}=\"{}\"", k, v));
             }
         }
         if self.class.len() > 0 {
-            string.push_str(&format!("class=\"{}\" ", self.class.join(" ")));
+            string.push_str(&format!(" class=\"{}\"", self.class.join(" ")));
         }
 
         if SELF_CLOSING.iter().any(|&tag| tag == self.tag) {
-            string.push_str("/>")
+            string.push_str(" />")
         } else {
             string.push_str(&format!(">{}", self.contents))
         }
@@ -286,7 +286,6 @@ impl HAMLParser {
     pub fn string_pre_order(buffer: String, tree: &Tree<HamlCode>, node_id: &NodeId) -> String {
         let node_ref = tree.get(node_id).unwrap();
         let (hat, pants) = match *node_ref.data() {
-
             HamlCode::HamlNodeBlock(ref node) => {
                 (node.hat(), node.pants().unwrap_or("".to_string()))
             }
@@ -482,14 +481,14 @@ mod tests {
     fn it_parser_scratch() {
         let haml = r#"
 %ul
-  %li
-  %li= smoked_salt 
+  %li.class1.class2
+  %li#coderun.code= smoked_salt 
   %li
     - if true
       %br
     = salt_box 
-  %li Salt
-  %li 
+  %li.inline Salt
+  %li#subdata
     Pepper
 "#;
         let mut parser = HAMLParser {
