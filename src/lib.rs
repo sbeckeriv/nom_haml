@@ -309,8 +309,11 @@ impl HAMLParser {
             })
             .collect::<Vec<String>>()
             .join("\n");
-        let mut list = vec![parent_hat, childern_str];
-        if parent_pants.trim().len()>0{
+        let mut list = vec![parent_hat];
+        if childern_str.trim().len() > 0 {
+            list.push(childern_str);
+        }
+        if parent_pants.trim().len() > 0 {
             list.push(parent_pants);
         }
 
@@ -428,8 +431,14 @@ impl HAMLParser {
                             }
 
                             let child_node = Node::new(haml_code);
-                            current_node = Some(tree.insert(child_node, UnderNode(parent_node.as_ref().unwrap()))
-                                .unwrap());
+                            let last_child =
+                                tree.insert(child_node, UnderNode(parent_node.as_ref().unwrap()))
+                                    .unwrap();
+                            if !is_self_closing {
+                                current_node = Some(last_child)
+                            } else {
+                                current_node = parent_node;
+                            }
                         }
                     } else {
                         match haml_code {
