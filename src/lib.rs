@@ -304,9 +304,9 @@ impl HAMLParser {
         let childern_str = node_ref.children()
             .iter()
             .map(|child_id| {
-                let new_buff = format!("{}  ",buffer);
-                HAMLParser::string_pre_order(new_buff, tree, &child_id)
-            })
+                     let new_buff = format!("{}  ",buffer);
+                     HAMLParser::string_pre_order(new_buff, tree, &child_id)
+                 })
             .collect::<Vec<String>>()
             .join("\n");
         let mut list = vec![parent_hat];
@@ -321,7 +321,12 @@ impl HAMLParser {
     }
 
     pub fn render(&self, context: Option<HashMap<String, Arc<fmt::Display>>>) -> String {
-        let root = self.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        let root = self.nodes
+            .as_ref()
+            .unwrap()
+            .root_node_id()
+            .unwrap()
+            .clone();
         HAMLParser::string_pre_order("".to_string(), self.nodes.as_ref().unwrap(), &root)
     }
 
@@ -385,9 +390,9 @@ impl HAMLParser {
                                 }
                             }
                             let child_node = Node::new(haml_code);
-                            let last_child =
-                                tree.insert(child_node, UnderNode(current_node.as_ref().unwrap()))
-                                    .unwrap();
+                            let last_child = tree.insert(child_node,
+                                                         UnderNode(current_node.as_ref().unwrap()))
+                                .unwrap();
 
                             if !is_self_closing {
                                 current_node = Some(last_child);
@@ -401,7 +406,10 @@ impl HAMLParser {
                                 let last_child = {
                                     let node = tree.get(current_node.as_ref().unwrap()).unwrap();
                                     // TODO remove clone?
-                                    node.children().last().unwrap().clone()
+                                    node.children()
+                                        .last()
+                                        .unwrap()
+                                        .clone()
                                 };
                                 current_node = Some(last_child);
                             }
@@ -428,9 +436,9 @@ impl HAMLParser {
                             }
 
                             let child_node = Node::new(haml_code);
-                            let last_child =
-                                tree.insert(child_node, UnderNode(parent_node.as_ref().unwrap()))
-                                    .unwrap();
+                            let last_child = tree.insert(child_node,
+                                                         UnderNode(parent_node.as_ref().unwrap()))
+                                .unwrap();
                             if !is_self_closing {
                                 current_node = Some(last_child)
                             } else {
@@ -441,7 +449,7 @@ impl HAMLParser {
                         match haml_code {
                             HamlCode::HamlNodeBlock(_) => {
                                 current_node = Some(tree.insert(Node::new(haml_code), AsRoot)
-                                    .unwrap());
+                                                        .unwrap());
                             }
                             _ => return Err(format!("No base node in stack found {:?}", haml_code)),
                         }
@@ -495,7 +503,12 @@ mod tests {
             haml: haml.to_string(),
         };
         parser.parse().unwrap();
-        let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        let root = parser.nodes
+            .as_ref()
+            .unwrap()
+            .root_node_id()
+            .unwrap()
+            .clone();
         {
             print_pre_order("".to_string(), &parser.nodes.as_ref().unwrap(), &root);
         }
@@ -517,7 +530,12 @@ mod tests {
             haml: haml.to_string(),
         };
         parser.parse().unwrap();
-        let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        let root = parser.nodes
+            .as_ref()
+            .unwrap()
+            .root_node_id()
+            .unwrap()
+            .clone();
         print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
 
     }
@@ -537,7 +555,12 @@ mod tests {
             haml: haml.to_string(),
         };
         parser.parse().unwrap();
-        let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        let root = parser.nodes
+            .as_ref()
+            .unwrap()
+            .root_node_id()
+            .unwrap()
+            .clone();
         print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
 
     }
@@ -558,7 +581,12 @@ mod tests {
             haml: haml.to_string(),
         };
         parser.parse().unwrap();
-        let root = parser.nodes.as_ref().unwrap().root_node_id().unwrap().clone();
+        let root = parser.nodes
+            .as_ref()
+            .unwrap()
+            .root_node_id()
+            .unwrap()
+            .clone();
         print_pre_order("".to_string(), &parser.nodes.unwrap(), &root);
 
     }
